@@ -11,3 +11,5 @@ venv/
 *.Rproj
 Gemfile.lock
 .vscode/
+.bundle/
+vendor/
