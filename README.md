@@ -61,4 +61,3 @@ make install
 make serve
 ```
 
-hi mom!
