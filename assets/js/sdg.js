@@ -724,11 +724,13 @@ var accessibilitySwitcher = function() {
 
   _.each(contrastIdentifiers, function(contrast) {
     var gaAttributes = opensdg.autotrack('switch_contrast', 'Accessibility', 'Change contrast setting', contrast);
+    var contrastTitle = getContrastToggleTitle(contrast);
     $('.contrast-switcher').append($('<li />').attr({
       'class': 'nav-link contrast contrast-' + contrast
     }).html($('<a />').attr(gaAttributes).attr({
       'href': 'javascript:void(0)',
-      'title': getContrastToggleTitle(contrast),
+      'title': contrastTitle,
+      'aria-label': contrastTitle,
       'data-contrast': contrast,
     }).html(getContrastToggleLabel(contrast).replace(" ", "<br/>")).click(function() {
       setActiveContrast($(this).data('contrast'));
@@ -846,11 +848,13 @@ var SERIES_TOGGLE = false;
  * @param {Array} rows
  */
 function getUniqueValuesByProperty(prop, rows) {
-  return rows
-    .map(function(row) { return row[prop]; })
-    .filter(isElementUniqueInArray)
-    .filter(function(row) { return row; })
-    .sort();
+  var uniques = new Set();
+  rows.forEach(function(row) {
+    if (row[prop] != null) {
+      uniques.add(row[prop])
+    }
+  });
+  return Array.from(uniques).sort();
 }
 
 // Use as a callback to Array.prototype.filter to get unique elements
@@ -2512,7 +2516,8 @@ var indicatorView = function (model, options) {
     view_obj._chartInstance.update(1000, true);
 
     $(this._legendElement).html(view_obj._chartInstance.generateLegend());
-
+    view_obj.updateIndicatorDataViewStatus(chartInfo);
+    view_obj.addLegendClickBehavior(this._legendElement, view_obj._chartInstance);
     view_obj.updateChartDownloadButton(chartInfo.selectionsTable);
   };
 
@@ -2560,16 +2565,18 @@ var indicatorView = function (model, options) {
           }]
         },
         legendCallback: function(chart) {
-            var text = ['<ul id="legend">'];
+            var text = ['<p id="legend-help" class="hide-during-image-download">' + translations.indicator.legend_help + '</p>'];
+            text.push('<ul id="legend" aria-labelledby="legend-help">');
 
             _.each(chart.data.datasets, function(dataset, datasetIndex) {
               text.push('<li data-datasetindex="' + datasetIndex + '">');
+              text.push('<button aria-pressed="false" aria-label="Press to hide the data set' + ' ' + dataset.label + '">')
               text.push('<span class="swatch' + (dataset.borderDash ? ' dashed' : '') + '" style="background-color: ' + dataset.borderColor + '">');
               text.push('</span>');
               text.push(translations.t(dataset.label));
+              text.push('</button>');
               text.push('</li>');
             });
-
             text.push('</ul>');
             return text.join('');
         },
@@ -2665,7 +2672,16 @@ var indicatorView = function (model, options) {
     });
 
     $(this._legendElement).html(view_obj._chartInstance.generateLegend());
+    view_obj.updateIndicatorDataViewStatus(chartInfo);
+    view_obj.addLegendClickBehavior(this._legendElement, view_obj._chartInstance);
   };
+
+  this.addLegendClickBehavior = function(legendElement, chartInstance) {
+    $(legendElement).find('li').click(function(e) {
+      var isBeingPressed = !($(this).hasClass('notshown'));
+      $(this).find('button').attr('aria-pressed', isBeingPressed);
+    })
+  }
 
   this.getGridColor = function(contrast) {
     return this.isHighContrast(contrast) ? '#222' : '#ddd';
@@ -2843,6 +2859,23 @@ var indicatorView = function (model, options) {
     }
   }
 
+  this.updateIndicatorDataViewStatus = function(chartInfo) {
+    var status = 'Chart and table shows no data.';
+    if (chartInfo.datasets.length > 0) {
+      var labels = chartInfo.datasets.map(function(dataset) {
+        return dataset.label;
+      });
+      status = 'Chart and table shows datasets for ' + labels.join(' and ') + '.';
+      if (chartInfo.selectedUnit) {
+        status += ' Selected unit of measurement is ' + chartInfo.selectedUnit + '.';
+      }
+      if (chartInfo.selectedSeries) {
+        status += ' Selected series is ' + chartInfo.selectedSeries + '.';
+      }
+    }
+    $('#indicator-data-view-status').html(status);
+  }
+
   this.createSourceButton = function(indicatorId, el) {
     var gaLabel = 'Download Source CSV: ' + indicatorId;
     $(el).append($('<a />').text(translations.indicator.download_source)
@@ -2885,9 +2918,9 @@ var indicatorView = function (model, options) {
       var table_head = '<thead><tr>';
 
       var getHeading = function(heading, index) {
-        var span = '<span class="sort" />';
-        var span_heading = '<span>' + translations.t(heading) + '</span>';
-        return (!index || heading.toLowerCase() == 'units') ? span_heading + span : span + span_heading;
+        var arrows = '<span class="sort"><i class="fa fa-sort-down"></i><i class="fa fa-sort-up"></i></span>';
+        var button = '<span tabindex="0" role="button" aria-describedby="column-sort-info">' + translations.t(heading) + '</span>';
+        return (!index || heading.toLowerCase() == 'units') ? button + arrows : arrows + button;
       };
 
       table.headings.forEach(function (heading, index) {
@@ -2918,6 +2951,8 @@ var indicatorView = function (model, options) {
       initialiseDataTable(el);
 
       $(el).removeClass('table-has-no-data');
+
+      $(el).find('th').removeAttr('tabindex');
     } else {
       $(el).append($('<h3 />').text(translations.indicator.data_not_available));
       $(el).addClass('table-has-no-data');
@@ -3211,6 +3246,7 @@ $(function() {
       targetEl.show();
       $(".top-level li button[data-target='" + target + "']").attr("aria-expanded", "true");
       $(this).parent().addClass('active');
+      $('#indicator_search').focus();
     }
   });
 
